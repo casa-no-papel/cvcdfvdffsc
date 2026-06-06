@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Casa no Papel - Acompanhamento de Processos</title>
+    <!-- Tailwind CSS para estilização -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
+    <!-- CSS Customizado para a Barra de Rolagem Invisível -->
     <style>
         .scroll-horizontal-suave {
             overflow-x: auto;
@@ -31,6 +34,7 @@
         }
     </style>
 
+    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -57,11 +61,13 @@
                 { nome: "Documentação do Imóvel", status: "concluido" },
                 { nome: "Em trânsito no cartório", status: "atual" },
                 { nome: "Entrega da Escritura", status: "pendente" },
-                { nome: "Chaves Entregues", status: "pendente" } // Exemplo de etapa extra
+                { nome: "Chaves Entregues", status: "pendente" }
             ],
             feito: ["Assinatura do contrato", "Envio de RG e CPF"],
+            protocolosLista: ["Prefeitura: Proc. 2026/089", "Cartório: Registro 1234"],
             falta: ["Aguardar cartório"],
-            protocolos: "Processo: 2026.089"
+            protocolos: "Processo: 2026.089",
+            observacoes: "obs:\nAqui um espaço para colocar as observações sobre o andamento e detalhes importantes do contrato."
         };
 
         let isDemoMode = false;
@@ -85,8 +91,13 @@
         const statusGeralEl = document.getElementById('status-geral');
         const imovelEl = document.getElementById('imovel-texto');
         const protocolosEl = document.getElementById('protocolos-texto');
+        const gridListas = document.getElementById('grid-listas');
         const listaFeito = document.getElementById('lista-feito');
+        const containerProtocolos = document.getElementById('container-protocolos');
+        const listaProtocolos = document.getElementById('lista-protocolos');
         const listaFalta = document.getElementById('lista-falta');
+        const containerObservacoes = document.getElementById('container-observacoes');
+        const textoObservacoes = document.getElementById('texto-observacoes');
         const containerEtapas = document.getElementById('container-etapas');
         const conteudoDashboard = document.getElementById('conteudo-dashboard');
         const semDadosMsg = document.getElementById('sem-dados-msg');
@@ -144,11 +155,9 @@
                         statusText = 'Pendente';
                     }
 
-                    // Lógica para desenhar a linha conetora: Se NÃO for o último, desenha a linha para o lado
                     const temLinha = index < data.etapas.length - 1;
                     const linhaHTML = temLinha ? `<div class="absolute top-4 left-[50%] w-full h-0.5 bg-slate-200 z-0"></div>` : '';
 
-                    // Adiciona o bloco com largura fixa (w-36) para garantir que fiquem juntinhos, mas não exprimidos
                     const etapaHTML = `
                         <div class="flex flex-col items-center relative w-36 shrink-0 snap-center group">
                             ${linhaHTML}
@@ -163,6 +172,25 @@
                     `;
                     containerEtapas.innerHTML += etapaHTML;
                 });
+            }
+
+            // Ajustar o Grid com base na existência de Protocolos
+            if (data.protocolosLista && data.protocolosLista.length > 0) {
+                containerProtocolos.classList.remove('hidden');
+                gridListas.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6';
+                
+                listaProtocolos.innerHTML = '';
+                data.protocolosLista.forEach(item => {
+                    listaProtocolos.innerHTML += `
+                        <li class="flex items-start gap-3 text-slate-700 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                            <i data-lucide="bookmark" class="w-5 h-5 text-blue-500 shrink-0 mt-0.5"></i>
+                            <span class="text-sm leading-relaxed">${item}</span>
+                        </li>
+                    `;
+                });
+            } else {
+                containerProtocolos.classList.add('hidden');
+                gridListas.className = 'grid grid-cols-1 md:grid-cols-2 gap-6';
             }
 
             // Renderizar O que foi feito
@@ -195,10 +223,18 @@
                 listaFalta.innerHTML = '<li class="text-sm text-slate-400">Tudo certo! Sem pendências.</li>';
             }
 
+            // Renderizar Observações
+            if (data.observacoes && data.observacoes.trim() !== '') {
+                containerObservacoes.classList.remove('hidden');
+                textoObservacoes.textContent = data.observacoes;
+            } else {
+                containerObservacoes.classList.add('hidden');
+            }
+
             lucide.createIcons();
         }
 
-        // --- Lógica de Autenticação ---
+        // --- Lógica de Autenticação e Pop-up do WhatsApp ---
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
 
@@ -208,6 +244,26 @@
             const erroLogin = document.getElementById('erro-login');
             const textoErroLogin = document.getElementById('texto-erro-login');
             const btnSubmitText = document.getElementById('btn-submit-text');
+
+            // Controle do Modal WhatsApp
+            const waBtn = document.getElementById('btn-whatsapp');
+            const waModal = document.getElementById('whatsapp-modal');
+            const waClose = document.getElementById('close-wa-modal');
+
+            waBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                waModal.classList.remove('hidden');
+            });
+
+            waClose.addEventListener('click', () => {
+                waModal.classList.add('hidden');
+            });
+
+            waModal.addEventListener('click', (e) => {
+                if (e.target === waModal) {
+                    waModal.classList.add('hidden');
+                }
+            });
 
             if (auth) {
                 onAuthStateChanged(auth, (user) => {
@@ -292,10 +348,12 @@
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 antialiased">
 
+    <!-- TELA DE LOADING INICIAL -->
     <div id="loader-auth" class="min-h-screen bg-slate-50 flex items-center justify-center">
         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
     </div>
 
+    <!-- TELA DE LOGIN -->
     <div id="view-login" class="min-h-screen flex flex-col justify-center items-center p-4 hidden">
         <div class="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
             <div class="bg-slate-900 p-8 text-center">
@@ -342,6 +400,7 @@
         </div>
     </div>
 
+    <!-- TELA DO DASHBOARD -->
     <div id="view-dashboard" class="min-h-screen hidden flex-col">
         <header class="bg-slate-900 text-white shadow-md">
             <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -373,6 +432,7 @@
             </div>
 
             <div id="conteudo-dashboard" class="hidden space-y-6">
+                <!-- Status Geral -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-l-amber-500">
                     <div>
                         <p class="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Status Atual</p>
@@ -388,6 +448,7 @@
                     </div>
                 </div>
 
+                <!-- Timeline de Etapas -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative">
                     <h3 class="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
                         <i data-lucide="circle-dot" class="w-5 h-5 text-amber-500"></i>
@@ -396,32 +457,115 @@
                     
                     <div class="scroll-horizontal-suave snap-x w-full">
                         <div id="container-etapas" class="flex flex-row justify-start items-start gap-0 relative w-max px-2">
-                            </div>
+                            <!-- Injetado via JS dinamicamente -->
+                        </div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Grid de Listas (Feito / Protocolos / Falta) -->
+                <div id="grid-listas" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- O que já foi feito -->
                     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
                             <i data-lucide="check-circle-2" class="w-5 h-5 text-green-500"></i> O que já foi feito
                         </h3>
                         <ul id="lista-feito" class="space-y-3"></ul>
                     </div>
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+
+                    <!-- Protocolos Condicional -->
+                    <div id="container-protocolos" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                            <i data-lucide="alert-circle" class="w-5 h-5 text-amber-500"></i> O que falta / Pendências
+                            <i data-lucide="bookmark" class="w-5 h-5 text-blue-500"></i> Protocolos
                         </h3>
-                        <ul id="lista-falta" class="space-y-3"></ul>
+                        <ul id="lista-protocolos" class="space-y-3"></ul>
+                    </div>
+
+                    <!-- O que falta / Pendências -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                <i data-lucide="alert-circle" class="w-5 h-5 text-amber-500"></i> O que falta / Pendências
+                            </h3>
+                            <ul id="lista-falta" class="space-y-3"></ul>
+                        </div>
+                        
+                        <!-- Botão de Envio de Documentos (Fixado no fim do card) -->
+                        <div class="mt-auto pt-6">
+                            <a href="https://forms.gle/3qjVwMVomWpeCD756" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 py-3 px-4 rounded-lg text-sm font-bold transition-all shadow-sm">
+                                <i data-lucide="upload-cloud" class="w-5 h-5 text-amber-500"></i>
+                                Enviar Documentos Pendentes
+                            </a>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Observações Condicional -->
+                <div id="container-observacoes" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 mt-6">
+                    <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <i data-lucide="info" class="w-5 h-5 text-slate-500"></i> Observações
+                    </h3>
+                    <div id="texto-observacoes" class="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 p-4 rounded-lg border border-slate-100 font-medium"></div>
+                </div>
+
             </div>
         </main>
 
-        <a href="https://wa.me/5583993339357?text=Quero%20saber%20o%20andamento%20do%20meu%20processo!" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 bg-[#25D366] hover:bg-[#128C7E] text-white p-4 rounded-full shadow-lg transition-all z-50 flex items-center justify-center group" title="Falar no WhatsApp">
+        <!-- Botão WhatsApp que abre o Modal -->
+        <button id="btn-whatsapp" class="fixed bottom-6 right-6 bg-[#25D366] hover:bg-[#128C7E] text-white p-4 rounded-full shadow-lg transition-all z-50 flex items-center justify-center group" title="Falar no WhatsApp">
             <svg viewBox="0 0 24 24" class="w-7 h-7 fill-current" xmlns="http://www.w3.org/2000/svg">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
             </svg>
-        </a>
+        </button>
+
     </div>
+
+    <!-- MODAL DO WHATSAPP -->
+    <div id="whatsapp-modal" class="fixed inset-0 bg-slate-900/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" id="whatsapp-modal-content">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="message-circle" class="w-5 h-5 text-[#25D366]"></i> Contato
+                </h3>
+                <button id="close-wa-modal" class="text-slate-400 hover:text-slate-700 bg-slate-200/50 hover:bg-slate-200 p-1.5 rounded-full transition-colors">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-3">
+                <a href="https://wa.me/5583993339357" target="_blank" class="w-full flex items-center gap-4 p-3 rounded-xl border border-slate-100 hover:bg-green-50 hover:border-green-200 transition-all group shadow-sm hover:shadow-md">
+                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600 group-hover:bg-[#25D366] group-hover:text-white transition-colors">
+                        <i data-lucide="user" class="w-6 h-6"></i>
+                    </div>
+                    <div class="text-left flex-1">
+                        <p class="font-bold text-slate-800 text-sm">Gerente Tony</p>
+                        <p class="text-xs text-slate-500 font-medium">Dúvidas gerais do processo</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 group-hover:text-green-500"></i>
+                </a>
+                
+                <a href="https://wa.me/5583998440523" target="_blank" class="w-full flex items-center gap-4 p-3 rounded-xl border border-slate-100 hover:bg-blue-50 hover:border-blue-200 transition-all group shadow-sm hover:shadow-md">
+                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                        <i data-lucide="file-signature" class="w-6 h-6"></i>
+                    </div>
+                    <div class="text-left flex-1">
+                        <p class="font-bold text-slate-800 text-sm">Cartório de Bananeiras</p>
+                        <p class="text-xs text-slate-500 font-medium">Registros e assinaturas</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 group-hover:text-blue-500"></i>
+                </a>
+
+                <a href="https://wa.me/5583996801640" target="_blank" class="w-full flex items-center gap-4 p-3 rounded-xl border border-slate-100 hover:bg-amber-50 hover:border-amber-200 transition-all group shadow-sm hover:shadow-md">
+                    <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                        <i data-lucide="landmark" class="w-6 h-6"></i>
+                    </div>
+                    <div class="text-left flex-1">
+                        <p class="font-bold text-slate-800 text-sm">Prefeitura de Bananeiras</p>
+                        <p class="text-xs text-slate-500 font-medium">Processos e tributos</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 group-hover:text-amber-500"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
