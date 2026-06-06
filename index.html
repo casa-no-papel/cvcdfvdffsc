@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casa no Papel - Acompanhamento de Processos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        .scroll-horizontal-suave {
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 10px; /* Espaço para não cortar a sombra */
+        }
+        /* Esconde a barra de rolagem visualmente, mas mantém a função de rolar */
+        .scroll-horizontal-suave::-webkit-scrollbar {
+            height: 6px;
+        }
+        .scroll-horizontal-suave::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+            border-radius: 10px;
+        }
+        .scroll-horizontal-suave::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 10px;
+        }
+        .scroll-horizontal-suave::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // CONFIGURAÇÃO DO FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyBknhpgCubdyuoFEgPL-yvjDylmwnMCmJU",
+            authDomain: "casa-no-papel343445fs.firebaseapp.com",
+            projectId: "casa-no-papel343445fs",
+            storageBucket: "casa-no-papel343445fs.firebasestorage.app",
+            messagingSenderId: "739560229761",
+            appId: "1:739560229761:web:f420b6e6571aeb2a123680"
+        };
+
+        // Dados de Demonstração
+        const DADOS_DEMONSTRACAO = {
+            nome: "Maria Oliveira",
+            statusGeral: "Em trânsito no cartório",
+            imovel: "Casa Centro",
+            etapas: [
+                { nome: "Contrato(s)", status: "concluido" },
+                { nome: "Documentação Pessoal", status: "concluido" },
+                { nome: "Documentação do Imóvel", status: "concluido" },
+                { nome: "Em trânsito no cartório", status: "atual" },
+                { nome: "Entrega da Escritura", status: "pendente" },
+                { nome: "Chaves Entregues", status: "pendente" } // Exemplo de etapa extra
+            ],
+            feito: ["Assinatura do contrato", "Envio de RG e CPF"],
+            falta: ["Aguardar cartório"],
+            protocolos: "Processo: 2026.089"
+        };
+
+        let isDemoMode = false;
+        let currentUser = null;
+        let unsubscribeSnapshot = null;
+
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.warn("Firebase não inicializado.", e);
+        }
+
+        const viewLogin = document.getElementById('view-login');
+        const viewDashboard = document.getElementById('view-dashboard');
+        const loaderAuth = document.getElementById('loader-auth');
+        
+        const userNameHeader = document.getElementById('user-name-header');
+        const statusGeralEl = document.getElementById('status-geral');
+        const imovelEl = document.getElementById('imovel-texto');
+        const protocolosEl = document.getElementById('protocolos-texto');
+        const listaFeito = document.getElementById('lista-feito');
+        const listaFalta = document.getElementById('lista-falta');
+        const containerEtapas = document.getElementById('container-etapas');
+        const conteudoDashboard = document.getElementById('conteudo-dashboard');
+        const semDadosMsg = document.getElementById('sem-dados-msg');
+        const loadingDataIndicator = document.getElementById('loading-data');
+
+        function showView(viewName) {
+            viewLogin.classList.add('hidden');
+            viewDashboard.classList.add('hidden');
+            loaderAuth.classList.add('hidden');
+
+            if (viewName === 'login') viewLogin.classList.remove('hidden');
+            else if (viewName === 'dashboard') viewDashboard.classList.remove('hidden');
+            else if (viewName === 'loading') loaderAuth.classList.remove('hidden');
+        }
+
+        // --- Lógica de Renderização de Dados ---
+        function renderDashboardData(data) {
+            loadingDataIndicator.classList.add('hidden');
+            
+            if (!data) {
+                conteudoDashboard.classList.add('hidden');
+                semDadosMsg.classList.remove('hidden');
+                userNameHeader.textContent = isDemoMode ? "Usuário (Demo)" : (currentUser ? currentUser.email : "Usuário");
+                return;
+            }
+
+            semDadosMsg.classList.add('hidden');
+            conteudoDashboard.classList.remove('hidden');
+
+            userNameHeader.textContent = `${data.nome || 'Cliente'} ${isDemoMode ? '(Demo)' : ''}`;
+            statusGeralEl.textContent = data.statusGeral || 'Em Análise';
+            imovelEl.textContent = data.imovel || ''; 
+            protocolosEl.textContent = data.protocolos || 'Sem protocolos registrados.';
+
+            // Renderizar Etapas Dinâmicas (Timeline com Scroll Horizontal)
+            containerEtapas.innerHTML = '';
+            if (data.etapas && data.etapas.length > 0) {
+                data.etapas.forEach((etapa, index) => {
+                    let icon, bgColor, textColor, statusText;
+                    
+                    if (etapa.status === 'concluido') {
+                        icon = '<i data-lucide="check-circle-2" class="w-5 h-5"></i>';
+                        bgColor = 'bg-green-500';
+                        textColor = 'text-white border-white';
+                        statusText = 'Concluído';
+                    } else if (etapa.status === 'atual') {
+                        icon = '<i data-lucide="circle-dot" class="w-5 h-5"></i>';
+                        bgColor = 'bg-amber-500';
+                        textColor = 'text-white border-white';
+                        statusText = 'Em andamento';
+                    } else {
+                        icon = '<i data-lucide="circle" class="w-4 h-4"></i>';
+                        bgColor = 'bg-slate-200';
+                        textColor = 'text-slate-400 border-white';
+                        statusText = 'Pendente';
+                    }
+
+                    // Lógica para desenhar a linha conetora: Se NÃO for o último, desenha a linha para o lado
+                    const temLinha = index < data.etapas.length - 1;
+                    const linhaHTML = temLinha ? `<div class="absolute top-4 left-[50%] w-full h-0.5 bg-slate-200 z-0"></div>` : '';
+
+                    // Adiciona o bloco com largura fixa (w-36) para garantir que fiquem juntinhos, mas não exprimidos
+                    const etapaHTML = `
+                        <div class="flex flex-col items-center relative w-36 shrink-0 snap-center group">
+                            ${linhaHTML}
+                            <div class="relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-4 shadow-sm transition-colors duration-300 ${bgColor} ${textColor}">
+                                ${icon}
+                            </div>
+                            <div class="text-center mt-3 w-full px-2">
+                                <p class="font-semibold text-[13px] leading-tight ${etapa.status === 'pendente' ? 'text-slate-400' : 'text-slate-800'}">${etapa.nome}</p>
+                                <p class="text-[10px] text-slate-500 mt-1 uppercase tracking-wider">${statusText}</p>
+                            </div>
+                        </div>
+                    `;
+                    containerEtapas.innerHTML += etapaHTML;
+                });
+            }
+
+            // Renderizar O que foi feito
+            listaFeito.innerHTML = '';
+            if (data.feito && data.feito.length > 0) {
+                data.feito.forEach(item => {
+                    listaFeito.innerHTML += `
+                        <li class="flex items-start gap-3 text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                            <i data-lucide="check-circle-2" class="w-5 h-5 text-green-500 shrink-0 mt-0.5"></i>
+                            <span class="text-sm leading-relaxed">${item}</span>
+                        </li>
+                    `;
+                });
+            } else {
+                listaFeito.innerHTML = '<li class="text-sm text-slate-400">Nenhum item registrado.</li>';
+            }
+
+            // Renderizar O que falta
+            listaFalta.innerHTML = '';
+            if (data.falta && data.falta.length > 0) {
+                data.falta.forEach(item => {
+                    listaFalta.innerHTML += `
+                        <li class="flex items-start gap-3 text-slate-700 bg-amber-50/50 p-3 rounded-lg border border-amber-100">
+                            <i data-lucide="chevron-right" class="w-5 h-5 text-amber-500 shrink-0 mt-0.5"></i>
+                            <span class="text-sm leading-relaxed">${item}</span>
+                        </li>
+                    `;
+                });
+            } else {
+                listaFalta.innerHTML = '<li class="text-sm text-slate-400">Tudo certo! Sem pendências.</li>';
+            }
+
+            lucide.createIcons();
+        }
+
+        // --- Lógica de Autenticação ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+
+            const formLogin = document.getElementById('form-login');
+            const btnDemo = document.getElementById('btn-demo');
+            const btnLogout = document.getElementById('btn-logout');
+            const erroLogin = document.getElementById('erro-login');
+            const textoErroLogin = document.getElementById('texto-erro-login');
+            const btnSubmitText = document.getElementById('btn-submit-text');
+
+            if (auth) {
+                onAuthStateChanged(auth, (user) => {
+                    if (isDemoMode) return; 
+                    if (user && !user.isAnonymous) {
+                        currentUser = user;
+                        showView('dashboard');
+                        buscarDadosFirestore(user.uid);
+                    } else {
+                        currentUser = null;
+                        if(unsubscribeSnapshot) unsubscribeSnapshot();
+                        showView('login');
+                    }
+                });
+            } else {
+                showView('login');
+            }
+
+            function buscarDadosFirestore(uid) {
+                if (!db) return;
+                loadingDataIndicator.classList.remove('hidden');
+                conteudoDashboard.classList.add('hidden');
+                semDadosMsg.classList.add('hidden');
+
+                const docRef = doc(db, 'clientes', uid);
+                
+                unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        renderDashboardData(docSnap.data());
+                    } else {
+                        renderDashboardData(null);
+                    }
+                }, (error) => {
+                    console.error("Erro:", error);
+                    renderDashboardData(null);
+                });
+            }
+
+            formLogin.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+
+                if (!auth) return;
+
+                erroLogin.classList.add('hidden');
+                btnSubmitText.textContent = 'Entrando...';
+
+                try {
+                    isDemoMode = false;
+                    await signInWithEmailAndPassword(auth, email, password);
+                } catch (error) {
+                    mostrarErro('E-mail ou senha incorretos.');
+                } finally {
+                    btnSubmitText.textContent = 'Acessar meu processo';
+                }
+            });
+
+            function mostrarErro(msg) {
+                textoErroLogin.textContent = msg;
+                erroLogin.classList.remove('hidden');
+            }
+
+            btnDemo.addEventListener('click', () => {
+                isDemoMode = true;
+                if(unsubscribeSnapshot) unsubscribeSnapshot(); 
+                showView('dashboard');
+                renderDashboardData(DADOS_DEMONSTRACAO);
+            });
+
+            btnLogout.addEventListener('click', async () => {
+                isDemoMode = false;
+                if(unsubscribeSnapshot) unsubscribeSnapshot();
+                if (auth && currentUser) await signOut(auth);
+                else showView('login');
+                document.getElementById('email').value = '';
+                document.getElementById('password').value = '';
+                erroLogin.classList.add('hidden');
+            });
+        });
+    </script>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800 antialiased">
+
+    <div id="loader-auth" class="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
+    </div>
+
+    <div id="view-login" class="min-h-screen flex flex-col justify-center items-center p-4 hidden">
+        <div class="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div class="bg-slate-900 p-8 text-center">
+                <div class="w-16 h-16 bg-amber-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                    <i data-lucide="building" class="text-slate-900 w-8 h-8"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-white tracking-tight">Casa no Papel</h1>
+                <p class="text-slate-400 text-sm mt-2">Acompanhe o processo do seu imóvel</p>
+            </div>
+            <div class="p-8">
+                <form id="form-login" class="space-y-5">
+                    <div id="erro-login" class="hidden bg-red-50 text-red-600 p-3 rounded-lg flex items-start gap-2 text-sm">
+                        <i data-lucide="alert-circle" class="w-5 h-5 shrink-0"></i>
+                        <span id="texto-erro-login">Erro no login</span>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">E-mail</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i data-lucide="mail" class="h-5 w-5 text-slate-400"></i>
+                            </div>
+                            <input id="email" type="email" class="block w-full pl-10 pr-3 py-3 border border-slate-300 rounded-lg focus:ring-amber-500 outline-none sm:text-sm" placeholder="seu@email.com" required />
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Senha</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i data-lucide="lock" class="h-5 w-5 text-slate-400"></i>
+                            </div>
+                            <input id="password" type="password" class="block w-full pl-10 pr-3 py-3 border border-slate-300 rounded-lg focus:ring-amber-500 outline-none sm:text-sm" placeholder="••••••••" required />
+                        </div>
+                    </div>
+                    <button type="submit" id="btn-submit" class="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-slate-900 bg-amber-500 hover:bg-amber-400 focus:outline-none transition-colors">
+                        <span id="btn-submit-text">Acessar meu processo</span>
+                    </button>
+                </form>
+                <div class="mt-6 border-t border-slate-200 pt-6">
+                    <button id="btn-demo" class="w-full flex justify-center items-center gap-2 py-2 px-4 border border-slate-300 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors">
+                        Ver Demonstração Interativa
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-dashboard" class="min-h-screen hidden flex-col">
+        <header class="bg-slate-900 text-white shadow-md">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center">
+                        <i data-lucide="building" class="text-slate-900 w-4 h-4"></i>
+                    </div>
+                    <span class="font-semibold text-lg tracking-tight hidden sm:block">Casa no Papel</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span id="user-name-header" class="text-sm text-slate-300">Carregando...</span>
+                    <button id="btn-logout" class="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors flex items-center gap-2 text-sm" title="Sair">
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                        <span class="hidden sm:block">Sair</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6 overflow-hidden">
+            
+            <div id="loading-data" class="text-center py-20">
+                <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-amber-500 mx-auto"></div>
+            </div>
+
+            <div id="sem-dados-msg" class="hidden bg-white p-8 rounded-xl shadow-sm text-center border border-slate-200">
+                <i data-lucide="alert-circle" class="w-12 h-12 text-amber-500 mx-auto mb-4"></i>
+                <h2 class="text-xl font-bold text-slate-800 mb-2">Nenhum processo encontrado</h2>
+            </div>
+
+            <div id="conteudo-dashboard" class="hidden space-y-6">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-l-amber-500">
+                    <div>
+                        <p class="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Status Atual</p>
+                        <h2 id="status-geral" class="text-2xl font-bold text-slate-900">...</h2>
+                    </div>
+                    <div class="flex flex-col gap-2 text-left md:text-right">
+                        <div class="bg-slate-50 px-4 py-2 rounded-lg border border-slate-100 text-sm font-mono text-slate-600">
+                            <span class="font-bold text-slate-700">Imóvel:</span> <span id="imovel-texto"></span>
+                        </div>
+                        <div id="protocolos-texto" class="bg-slate-50 px-4 py-2 rounded-lg border border-slate-100 whitespace-pre-wrap text-sm text-slate-600 font-mono">
+                            ...
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative">
+                    <h3 class="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                        <i data-lucide="circle-dot" class="w-5 h-5 text-amber-500"></i>
+                        Andamento do Processo
+                    </h3>
+                    
+                    <div class="scroll-horizontal-suave snap-x w-full">
+                        <div id="container-etapas" class="flex flex-row justify-start items-start gap-0 relative w-max px-2">
+                            </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                            <i data-lucide="check-circle-2" class="w-5 h-5 text-green-500"></i> O que já foi feito
+                        </h3>
+                        <ul id="lista-feito" class="space-y-3"></ul>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                            <i data-lucide="alert-circle" class="w-5 h-5 text-amber-500"></i> O que falta / Pendências
+                        </h3>
+                        <ul id="lista-falta" class="space-y-3"></ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <a href="https://wa.me/5583993339357?text=Quero%20saber%20o%20andamento%20do%20meu%20processo!" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 bg-[#25D366] hover:bg-[#128C7E] text-white p-4 rounded-full shadow-lg transition-all z-50 flex items-center justify-center group" title="Falar no WhatsApp">
+            <svg viewBox="0 0 24 24" class="w-7 h-7 fill-current" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
+            </svg>
+        </a>
+    </div>
+</body>
+</html>
