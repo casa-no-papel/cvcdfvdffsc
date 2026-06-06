@@ -4,12 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Casa no Papel - Acompanhamento de Processos</title>
-    <!-- Tailwind CSS para estilização -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- CSS Customizado para a Barra de Rolagem Invisível -->
     <style>
         .scroll-horizontal-suave {
             overflow-x: auto;
@@ -34,7 +31,6 @@
         }
     </style>
 
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -50,27 +46,6 @@
             appId: "1:739560229761:web:f420b6e6571aeb2a123680"
         };
 
-        // Dados de Demonstração
-        const DADOS_DEMONSTRACAO = {
-            nome: "Maria Oliveira",
-            statusGeral: "Em trânsito no cartório",
-            imovel: "Casa Centro",
-            etapas: [
-                { nome: "Contrato(s)", status: "concluido" },
-                { nome: "Documentação Pessoal", status: "concluido" },
-                { nome: "Documentação do Imóvel", status: "concluido" },
-                { nome: "Em trânsito no cartório", status: "atual" },
-                { nome: "Entrega da Escritura", status: "pendente" },
-                { nome: "Chaves Entregues", status: "pendente" }
-            ],
-            feito: ["Assinatura do contrato", "Envio de RG e CPF"],
-            protocolosLista: ["Prefeitura: Proc. 2026/089", "Cartório: Registro 1234"],
-            falta: ["Aguardar cartório"],
-            protocolos: "Processo: 2026.089",
-            observacoes: "obs:\nAqui um espaço para colocar as observações sobre o andamento e detalhes importantes do contrato."
-        };
-
-        let isDemoMode = false;
         let currentUser = null;
         let unsubscribeSnapshot = null;
 
@@ -80,7 +55,7 @@
             auth = getAuth(app);
             db = getFirestore(app);
         } catch (e) {
-            console.warn("Firebase não inicializado.", e);
+            console.warn("Firebase não inicializado corretamente.", e);
         }
 
         const viewLogin = document.getElementById('view-login');
@@ -120,14 +95,14 @@
             if (!data) {
                 conteudoDashboard.classList.add('hidden');
                 semDadosMsg.classList.remove('hidden');
-                userNameHeader.textContent = isDemoMode ? "Usuário (Demo)" : (currentUser ? currentUser.email : "Usuário");
+                userNameHeader.textContent = currentUser ? currentUser.email : "Usuário";
                 return;
             }
 
             semDadosMsg.classList.add('hidden');
             conteudoDashboard.classList.remove('hidden');
 
-            userNameHeader.textContent = `${data.nome || 'Cliente'} ${isDemoMode ? '(Demo)' : ''}`;
+            userNameHeader.textContent = data.nome || 'Cliente';
             statusGeralEl.textContent = data.statusGeral || 'Em Análise';
             imovelEl.textContent = data.imovel || ''; 
             protocolosEl.textContent = data.protocolos || 'Sem protocolos registrados.';
@@ -193,7 +168,7 @@
                 gridListas.className = 'grid grid-cols-1 md:grid-cols-2 gap-6';
             }
 
-            // Renderizar O que foi feito
+            // Renderizar O que já foi feito
             listaFeito.innerHTML = '';
             if (data.feito && data.feito.length > 0) {
                 data.feito.forEach(item => {
@@ -239,7 +214,6 @@
             lucide.createIcons();
 
             const formLogin = document.getElementById('form-login');
-            const btnDemo = document.getElementById('btn-demo');
             const btnLogout = document.getElementById('btn-logout');
             const erroLogin = document.getElementById('erro-login');
             const textoErroLogin = document.getElementById('texto-erro-login');
@@ -267,7 +241,6 @@
 
             if (auth) {
                 onAuthStateChanged(auth, (user) => {
-                    if (isDemoMode) return; 
                     if (user && !user.isAnonymous) {
                         currentUser = user;
                         showView('dashboard');
@@ -313,7 +286,6 @@
                 btnSubmitText.textContent = 'Entrando...';
 
                 try {
-                    isDemoMode = false;
                     await signInWithEmailAndPassword(auth, email, password);
                 } catch (error) {
                     mostrarErro('E-mail ou senha incorretos.');
@@ -327,15 +299,7 @@
                 erroLogin.classList.remove('hidden');
             }
 
-            btnDemo.addEventListener('click', () => {
-                isDemoMode = true;
-                if(unsubscribeSnapshot) unsubscribeSnapshot(); 
-                showView('dashboard');
-                renderDashboardData(DADOS_DEMONSTRACAO);
-            });
-
             btnLogout.addEventListener('click', async () => {
-                isDemoMode = false;
                 if(unsubscribeSnapshot) unsubscribeSnapshot();
                 if (auth && currentUser) await signOut(auth);
                 else showView('login');
@@ -348,12 +312,10 @@
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 antialiased">
 
-    <!-- TELA DE LOADING INICIAL -->
     <div id="loader-auth" class="min-h-screen bg-slate-50 flex items-center justify-center">
         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
     </div>
 
-    <!-- TELA DE LOGIN -->
     <div id="view-login" class="min-h-screen flex flex-col justify-center items-center p-4 hidden">
         <div class="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
             <div class="bg-slate-900 p-8 text-center">
@@ -391,16 +353,10 @@
                         <span id="btn-submit-text">Acessar meu processo</span>
                     </button>
                 </form>
-                <div class="mt-6 border-t border-slate-200 pt-6">
-                    <button id="btn-demo" class="w-full flex justify-center items-center gap-2 py-2 px-4 border border-slate-300 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors">
-                        Ver Demonstração Interativa
-                    </button>
-                </div>
             </div>
         </div>
     </div>
 
-    <!-- TELA DO DASHBOARD -->
     <div id="view-dashboard" class="min-h-screen hidden flex-col">
         <header class="bg-slate-900 text-white shadow-md">
             <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -432,7 +388,6 @@
             </div>
 
             <div id="conteudo-dashboard" class="hidden space-y-6">
-                <!-- Status Geral -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-l-amber-500">
                     <div>
                         <p class="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Status Atual</p>
@@ -448,7 +403,6 @@
                     </div>
                 </div>
 
-                <!-- Timeline de Etapas -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative">
                     <h3 class="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
                         <i data-lucide="circle-dot" class="w-5 h-5 text-amber-500"></i>
@@ -457,14 +411,11 @@
                     
                     <div class="scroll-horizontal-suave snap-x w-full">
                         <div id="container-etapas" class="flex flex-row justify-start items-start gap-0 relative w-max px-2">
-                            <!-- Injetado via JS dinamicamente -->
-                        </div>
+                            </div>
                     </div>
                 </div>
 
-                <!-- Grid de Listas (Feito / Protocolos / Falta) -->
                 <div id="grid-listas" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- O que já foi feito -->
                     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
                             <i data-lucide="check-circle-2" class="w-5 h-5 text-green-500"></i> O que já foi feito
@@ -472,7 +423,6 @@
                         <ul id="lista-feito" class="space-y-3"></ul>
                     </div>
 
-                    <!-- Protocolos Condicional -->
                     <div id="container-protocolos" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
                             <i data-lucide="bookmark" class="w-5 h-5 text-blue-500"></i> Protocolos
@@ -480,7 +430,6 @@
                         <ul id="lista-protocolos" class="space-y-3"></ul>
                     </div>
 
-                    <!-- O que falta / Pendências -->
                     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
                         <div>
                             <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
@@ -489,7 +438,6 @@
                             <ul id="lista-falta" class="space-y-3"></ul>
                         </div>
                         
-                        <!-- Botão de Envio de Documentos (Fixado no fim do card) -->
                         <div class="mt-auto pt-6">
                             <a href="https://forms.gle/3qjVwMVomWpeCD756" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 py-3 px-4 rounded-lg text-sm font-bold transition-all shadow-sm">
                                 <i data-lucide="upload-cloud" class="w-5 h-5 text-amber-500"></i>
@@ -499,7 +447,6 @@
                     </div>
                 </div>
 
-                <!-- Observações Condicional -->
                 <div id="container-observacoes" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 mt-6">
                     <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
                         <i data-lucide="info" class="w-5 h-5 text-slate-500"></i> Observações
@@ -510,7 +457,6 @@
             </div>
         </main>
 
-        <!-- Botão WhatsApp que abre o Modal -->
         <button id="btn-whatsapp" class="fixed bottom-6 right-6 bg-[#25D366] hover:bg-[#128C7E] text-white p-4 rounded-full shadow-lg transition-all z-50 flex items-center justify-center group" title="Falar no WhatsApp">
             <svg viewBox="0 0 24 24" class="w-7 h-7 fill-current" xmlns="http://www.w3.org/2000/svg">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
@@ -519,7 +465,6 @@
 
     </div>
 
-    <!-- MODAL DO WHATSAPP -->
     <div id="whatsapp-modal" class="fixed inset-0 bg-slate-900/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" id="whatsapp-modal-content">
             <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
